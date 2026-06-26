@@ -21,6 +21,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -30,6 +31,8 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -74,7 +77,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class AppState {
-    Splash, Dashboard, AddProduct
+    Splash, Dashboard, AddProduct, AddBahanBaku
 }
 
 @Composable
@@ -83,7 +86,7 @@ fun AppNavigator() {
     
     val context = LocalContext.current
     val database = remember { AppDatabase.getDatabase(context) }
-    val repository = remember { ProductRepository(database.productDao()) }
+    val repository = remember { ProductRepository(database.productDao(), database.bahanBakuDao()) }
     val viewModel: ProductViewModel = viewModel(factory = ProductViewModelFactory(repository))
 
     Crossfade(
@@ -97,9 +100,14 @@ fun AppNavigator() {
             }
             AppState.Dashboard -> DashboardScreen(
                 viewModel = viewModel,
-                onNavigateToAddProduct = { currentState = AppState.AddProduct }
+                onNavigateToAddProduct = { currentState = AppState.AddProduct },
+                onNavigateToAddBahanBaku = { currentState = AppState.AddBahanBaku }
             )
             AppState.AddProduct -> AddProductScreen(
+                viewModel = viewModel,
+                onBack = { currentState = AppState.Dashboard }
+            )
+            AppState.AddBahanBaku -> BahanBakuDashboardScreen(
                 viewModel = viewModel,
                 onBack = { currentState = AppState.Dashboard }
             )
@@ -457,7 +465,7 @@ fun SplashScreen(onAnimationFinished: () -> Unit) {
 }
 
 @Composable
-fun DashboardScreen(viewModel: ProductViewModel, onNavigateToAddProduct: () -> Unit) {
+fun DashboardScreen(viewModel: ProductViewModel, onNavigateToAddProduct: () -> Unit, onNavigateToAddBahanBaku: () -> Unit) {
     val products by viewModel.uiState.collectAsStateWithLifecycle()
     
     val infiniteTransition = rememberInfiniteTransition(label = "DashboardPulse")
@@ -624,6 +632,7 @@ fun DashboardScreen(viewModel: ProductViewModel, onNavigateToAddProduct: () -> U
 
         GlassmorphicExpandableFab(
             onAddProduct = onNavigateToAddProduct,
+            onAddBahanBaku = onNavigateToAddBahanBaku,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(bottom = 32.dp, end = 24.dp)
@@ -747,6 +756,7 @@ fun ProductCard(product: Product) {
 @Composable
 fun GlassmorphicExpandableFab(
     onAddProduct: () -> Unit,
+    onAddBahanBaku: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(false) }
@@ -775,7 +785,10 @@ fun GlassmorphicExpandableFab(
                     isExpanded = false
                     onAddProduct()
                 })
-                FabChildButton(icon = Icons.AutoMirrored.Filled.List, label = "Kategori")
+                FabChildButton(icon = Icons.AutoMirrored.Filled.List, label = "Bahan Baku", onClick = {
+                    isExpanded = false
+                    onAddBahanBaku()
+                })
                 FabChildButton(icon = Icons.Default.Settings, label = "Pengaturan")
             }
         }
@@ -890,6 +903,9 @@ fun FabChildButton(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddProductScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
+    val bahanBakuList by viewModel.bahanBakuState.collectAsStateWithLifecycle()
+    var selectedBahanBakuIds by remember { mutableStateOf(setOf<Int>()) }
+
     var productName by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var productType by remember { mutableStateOf("Satuan") } // Satuan or Paket
@@ -1138,6 +1154,74 @@ fun AddProductScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
                     }
                 }
                 
+                // Bahan Baku Selection
+                if (bahanBakuList.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Bahan Baku (Pilih)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF94A3B8),
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                        
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            bahanBakuList.forEach { bahanBaku ->
+                                val isSelected = selectedBahanBakuIds.contains(bahanBaku.id)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            color = if (isSelected) Color(0x3300F0FF) else Color(0x0CFFFFFF),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (isSelected) Color(0xFF00F0FF) else Color(0x26FFFFFF),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            if (isSelected) {
+                                                selectedBahanBakuIds = selectedBahanBakuIds - bahanBaku.id
+                                            } else {
+                                                selectedBahanBakuIds = selectedBahanBakuIds + bahanBaku.id
+                                            }
+                                        }
+                                        .padding(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = bahanBaku.name,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp
+                                            )
+                                            Text(
+                                                text = "${bahanBaku.amount} ${bahanBaku.unit} - Rp${bahanBaku.price.toInt()}",
+                                                color = Color(0xFF94A3B8),
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Selected",
+                                                tint = Color(0xFF00F0FF)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(32.dp))
                 
                 Button(
@@ -1150,7 +1234,8 @@ fun AddProductScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
                                     type = productType,
                                     packageName = packageName,
                                     packageDesc = packageDesc,
-                                    imageUris = imageUris.joinToString(",") { it.toString() }
+                                    imageUris = imageUris.joinToString(",") { it.toString() },
+                                    bahanBakuIds = selectedBahanBakuIds.joinToString(",")
                                 )
                             )
                             onBack()
@@ -1187,6 +1272,7 @@ fun GlassmorphicTextField(
     label: String,
     placeholder: String,
     singleLine: Boolean = true,
+    keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
     modifier: Modifier = Modifier
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1203,6 +1289,7 @@ fun GlassmorphicTextField(
             onValueChange = onValueChange,
             placeholder = { Text(placeholder, color = Color(0x66FFFFFF)) },
             singleLine = singleLine,
+            keyboardOptions = keyboardOptions,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Color(0xFF00F0FF),
                 unfocusedBorderColor = Color(0x26FFFFFF),
@@ -1215,5 +1302,564 @@ fun GlassmorphicTextField(
             shape = RoundedCornerShape(16.dp),
             modifier = modifier.fillMaxWidth()
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BahanBakuDashboardScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
+    val bahanBakuList by viewModel.bahanBakuState.collectAsStateWithLifecycle()
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var bahanBakuToEdit by remember { mutableStateOf<com.example.data.BahanBaku?>(null) }
+
+    LiquidChromeBackground {
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(Color(0x15FFFFFF), RoundedCornerShape(16.dp))
+                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                            .clickable { onBack() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Bahan Baku",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                // List
+                if (bahanBakuList.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Belum ada bahan baku", color = Color(0xFF94A3B8))
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(bahanBakuList) { bahanBaku ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0x0CFFFFFF), RoundedCornerShape(16.dp))
+                                    .padding(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = bahanBaku.name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        )
+                                        Text(
+                                            text = "${bahanBaku.amount} ${bahanBaku.unit} - Rp${bahanBaku.price.toLong()}",
+                                            color = Color(0xFF94A3B8),
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit",
+                                            tint = Color(0xFF00F0FF),
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clickable {
+                                                    bahanBakuToEdit = bahanBaku
+                                                    showEditDialog = true
+                                                }
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = Color(0xFFFF4C4C),
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clickable {
+                                                    viewModel.deleteBahanBaku(bahanBaku)
+                                                }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // FAB
+            androidx.compose.material3.FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = Color(0xFF00F0FF),
+                contentColor = Color(0xFF020E26),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(24.dp)
+            ) {
+                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Bahan Baku")
+            }
+        }
+        
+        if (showAddDialog) {
+            AddBahanBakuDialog(
+                onDismiss = { showAddDialog = false },
+                onSave = { newBahanBaku ->
+                    viewModel.addBahanBaku(newBahanBaku)
+                    showAddDialog = false
+                }
+            )
+        }
+        
+        if (showEditDialog && bahanBakuToEdit != null) {
+            EditBahanBakuDialog(
+                bahanBaku = bahanBakuToEdit!!,
+                onDismiss = {
+                    showEditDialog = false
+                    bahanBakuToEdit = null
+                },
+                onSave = { updatedBahanBaku ->
+                    viewModel.addBahanBaku(updatedBahanBaku)
+                    showEditDialog = false
+                    bahanBakuToEdit = null
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddBahanBakuDialog(
+    onDismiss: () -> Unit,
+    onSave: (com.example.data.BahanBaku) -> Unit
+) {
+    var nama by remember { mutableStateOf("") }
+    var kategori by remember { mutableStateOf("") }
+    var harga by remember { mutableStateOf("") }
+    var satuan by remember { mutableStateOf("Kg") }
+    var jumlah by remember { mutableStateOf("") }
+    
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    
+    val units = listOf("Kg", "Gr", "Ltr", "ML")
+    var unitDropdownExpanded by remember { mutableStateOf(false) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF1E293B), RoundedCornerShape(24.dp))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
+                .padding(24.dp)
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Tambah Bahan Baku",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                GlassmorphicTextField(
+                    value = nama,
+                    onValueChange = { nama = it },
+                    label = "Nama",
+                    placeholder = "Misal: Tepung"
+                )
+
+                GlassmorphicTextField(
+                    value = kategori,
+                    onValueChange = { kategori = it },
+                    label = "Kategori",
+                    placeholder = "Misal: Sembako"
+                )
+
+                GlassmorphicTextField(
+                    value = harga,
+                    onValueChange = { newValue -> harga = newValue.filter { it.isDigit() } },
+                    label = "Harga Modal",
+                    placeholder = "Misal: 15000",
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    )
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Satuan & Jumlah",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF94A3B8),
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(0.4f)) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                                    .background(Color(0x0CFFFFFF), RoundedCornerShape(16.dp))
+                                    .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { unitDropdownExpanded = true }
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = satuan,
+                                        color = Color.White,
+                                        fontSize = 16.sp
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Select Unit",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            
+                            DropdownMenu(
+                                expanded = unitDropdownExpanded,
+                                onDismissRequest = { unitDropdownExpanded = false },
+                                modifier = Modifier.background(Color(0xFF1E293B))
+                            ) {
+                                units.forEach { unit ->
+                                    DropdownMenuItem(
+                                        text = { Text(unit, color = Color.White) },
+                                        onClick = {
+                                            satuan = unit
+                                            unitDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        
+                        OutlinedTextField(
+                            value = jumlah,
+                            onValueChange = { newValue -> jumlah = newValue.filter { it.isDigit() || it == '.' } },
+                            placeholder = { Text("Jumlah", color = Color(0x66FFFFFF)) },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF00F0FF),
+                                unfocusedBorderColor = Color(0x26FFFFFF),
+                                focusedContainerColor = Color(0x0CFFFFFF),
+                                unfocusedContainerColor = Color(0x0CFFFFFF),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF00F0FF)
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.weight(0.6f).height(56.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Batal", color = Color(0xFF94A3B8))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (nama.isNotBlank() && harga.isNotBlank() && jumlah.isNotBlank()) {
+                                showConfirmDialog = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF00F0FF),
+                            contentColor = Color(0xFF020E26)
+                        )
+                    ) {
+                        Text("Simpan")
+                    }
+                }
+            }
+        }
+        
+        if (showConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showConfirmDialog = false },
+                title = { Text("Konfirmasi", color = Color.White) },
+                text = { Text("Pastikan detail bahan baku sudah benar", color = Color(0xFF94A3B8)) },
+                containerColor = Color(0xFF1E293B),
+                confirmButton = {
+                    TextButton(onClick = {
+                        showConfirmDialog = false
+                        onSave(
+                            com.example.data.BahanBaku(
+                                name = nama,
+                                category = kategori,
+                                price = harga.toDoubleOrNull() ?: 0.0,
+                                unit = satuan,
+                                amount = jumlah.toDoubleOrNull() ?: 0.0
+                            )
+                        )
+                    }) {
+                        Text("Ya, Simpan", color = Color(0xFF00F0FF))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConfirmDialog = false }) {
+                        Text("Batal", color = Color(0xFF94A3B8))
+                    }
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditBahanBakuDialog(
+    bahanBaku: com.example.data.BahanBaku,
+    onDismiss: () -> Unit,
+    onSave: (com.example.data.BahanBaku) -> Unit
+) {
+    var nama by remember { mutableStateOf(bahanBaku.name) }
+    var kategori by remember { mutableStateOf(bahanBaku.category) }
+    var harga by remember { mutableStateOf(bahanBaku.price.toLong().toString()) }
+    var satuan by remember { mutableStateOf(bahanBaku.unit) }
+    var jumlah by remember { mutableStateOf(bahanBaku.amount.toString()) }
+    
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    
+    val units = listOf("Kg", "Gr", "Ltr", "ML")
+    var unitDropdownExpanded by remember { mutableStateOf(false) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF1E293B), RoundedCornerShape(24.dp))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
+                .padding(24.dp)
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Edit Bahan Baku",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                GlassmorphicTextField(
+                    value = nama,
+                    onValueChange = { nama = it },
+                    label = "Nama",
+                    placeholder = ""
+                )
+
+                GlassmorphicTextField(
+                    value = kategori,
+                    onValueChange = { kategori = it },
+                    label = "Kategori",
+                    placeholder = ""
+                )
+
+                GlassmorphicTextField(
+                    value = harga,
+                    onValueChange = { newValue -> harga = newValue.filter { it.isDigit() } },
+                    label = "Harga Modal",
+                    placeholder = "",
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    )
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Satuan & Jumlah",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF94A3B8),
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(0.4f)) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                                    .background(Color(0x0CFFFFFF), RoundedCornerShape(16.dp))
+                                    .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { unitDropdownExpanded = true }
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = satuan,
+                                        color = Color.White,
+                                        fontSize = 16.sp
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Select Unit",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            
+                            DropdownMenu(
+                                expanded = unitDropdownExpanded,
+                                onDismissRequest = { unitDropdownExpanded = false },
+                                modifier = Modifier.background(Color(0xFF1E293B))
+                            ) {
+                                units.forEach { unit ->
+                                    DropdownMenuItem(
+                                        text = { Text(unit, color = Color.White) },
+                                        onClick = {
+                                            satuan = unit
+                                            unitDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        
+                        OutlinedTextField(
+                            value = jumlah,
+                            onValueChange = { newValue -> jumlah = newValue.filter { it.isDigit() || it == '.' } },
+                            placeholder = { Text("Jumlah", color = Color(0x66FFFFFF)) },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF00F0FF),
+                                unfocusedBorderColor = Color(0x26FFFFFF),
+                                focusedContainerColor = Color(0x0CFFFFFF),
+                                unfocusedContainerColor = Color(0x0CFFFFFF),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF00F0FF)
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.weight(0.6f).height(56.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Batal", color = Color(0xFF94A3B8))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (nama.isNotBlank() && harga.isNotBlank() && jumlah.isNotBlank()) {
+                                showConfirmDialog = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF00F0FF),
+                            contentColor = Color(0xFF020E26)
+                        )
+                    ) {
+                        Text("Simpan")
+                    }
+                }
+            }
+        }
+        
+        if (showConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showConfirmDialog = false },
+                title = { Text("Konfirmasi", color = Color.White) },
+                text = { Text("Pastikan detail bahan baku sudah benar", color = Color(0xFF94A3B8)) },
+                containerColor = Color(0xFF1E293B),
+                confirmButton = {
+                    TextButton(onClick = {
+                        showConfirmDialog = false
+                        onSave(
+                            bahanBaku.copy(
+                                name = nama,
+                                category = kategori,
+                                price = harga.toDoubleOrNull() ?: 0.0,
+                                unit = satuan,
+                                amount = jumlah.toDoubleOrNull() ?: 0.0
+                            )
+                        )
+                    }) {
+                        Text("Ya, Simpan", color = Color(0xFF00F0FF))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConfirmDialog = false }) {
+                        Text("Batal", color = Color(0xFF94A3B8))
+                    }
+                }
+            )
+        }
     }
 }
